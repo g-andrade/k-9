@@ -63,7 +63,6 @@ public class MessageContainerView extends LinearLayout implements OnClickListene
     private static final int MENU_ITEM_EMAIL_SAVE = Menu.FIRST + 1;
     private static final int MENU_ITEM_EMAIL_COPY = Menu.FIRST + 2;
 
-    private View mSidebar;
     private MessageWebView mMessageContentView;
     private LinearLayout mAttachments;
     private Button mShowHiddenAttachments;
@@ -81,8 +80,6 @@ public class MessageContainerView extends LinearLayout implements OnClickListene
     @Override
     public void onFinishInflate() {
         super.onFinishInflate();
-
-        mSidebar = findViewById(R.id.message_sidebar);
 
         mMessageContentView = (MessageWebView) findViewById(R.id.message_content);
         mMessageContentView.configure();
@@ -437,18 +434,6 @@ public class MessageContainerView extends LinearLayout implements OnClickListene
                     showPicturesController.notifyMessageContainerContainsPictures(this);
                 }
             }
-        }
-
-        if (displayPgpHeader) {
-            ViewStub openPgpHeaderStub = (ViewStub) findViewById(R.id.openpgp_header_stub);
-            OpenPgpHeaderView openPgpHeaderView = (OpenPgpHeaderView) openPgpHeaderStub.inflate();
-
-            CryptoResultAnnotation cryptoAnnotation = messageViewContainer.cryptoAnnotation;
-            openPgpHeaderView.setOpenPgpData(cryptoAnnotation);
-            openPgpHeaderView.setCallback(openPgpHeaderViewCallback);
-            mSidebar.setVisibility(View.VISIBLE);
-        } else {
-            mSidebar.setVisibility(View.GONE);
         }
 
         String text;
