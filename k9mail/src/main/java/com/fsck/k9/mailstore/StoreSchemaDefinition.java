@@ -200,6 +200,9 @@ class StoreSchemaDefinition implements LockableDatabase.SchemaDefinition {
                 "BEGIN " +
                 "DELETE FROM message_parts WHERE root = OLD.message_part_id;" +
                 "END");
+
+        db.execSQL("DROP TABLE IF EXISTS messages_fulltext");
+        db.execSQL("CREATE VIRTUAL TABLE messages_fulltext USING fts4 (fulltext)");
     }
 
 
