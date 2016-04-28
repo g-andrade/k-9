@@ -2,6 +2,7 @@ package com.fsck.k9.activity.compose;
 
 import android.content.Context;
 import android.content.Intent;
+import android.os.Parcelable;
 
 import com.fsck.k9.Account;
 import com.fsck.k9.Preferences;
@@ -34,10 +35,12 @@ public class MessageActions {
             Context context,
             LocalMessage message,
             boolean replyAll,
-            String messageBody) {
+            String messageBody,
+            Parcelable decryptionResult) {
         Intent i = new Intent(context, MessageCompose.class);
         i.putExtra(MessageCompose.EXTRA_MESSAGE_BODY, messageBody);
         i.putExtra(MessageCompose.EXTRA_MESSAGE_REFERENCE, message.makeMessageReference());
+        i.putExtra(MessageCompose.EXTRA_DECRYPTION_RESULT, decryptionResult);
         if (replyAll) {
             i.setAction(MessageCompose.ACTION_REPLY_ALL);
         } else {
@@ -64,8 +67,8 @@ public class MessageActions {
             Context context,
             LocalMessage message,
             boolean replyAll,
-            String messageBody) {
-        context.startActivity(getActionReplyIntent(context, message, replyAll, messageBody));
+            String messageBody, Parcelable decryptionResult) {
+        context.startActivity(getActionReplyIntent(context, message, replyAll, messageBody, decryptionResult));
     }
 
     /**
@@ -75,10 +78,12 @@ public class MessageActions {
     public static void actionForward(
             Context context,
             LocalMessage message,
-            String messageBody) {
+            String messageBody,
+            Parcelable decryptionResult) {
         Intent i = new Intent(context, MessageCompose.class);
         i.putExtra(MessageCompose.EXTRA_MESSAGE_BODY, messageBody);
         i.putExtra(MessageCompose.EXTRA_MESSAGE_REFERENCE, message.makeMessageReference());
+        i.putExtra(MessageCompose.EXTRA_DECRYPTION_RESULT, decryptionResult);
         i.setAction(MessageCompose.ACTION_FORWARD);
         context.startActivity(i);
     }

@@ -19,6 +19,7 @@ import android.content.ClipData;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.IntentSender;
 import android.content.IntentSender.SendIntentException;
 import android.content.Loader;
 import android.content.pm.ActivityInfo;
@@ -119,6 +120,7 @@ public class MessageCompose extends K9Activity implements OnClickListener,
     public static final String EXTRA_ACCOUNT = "account";
     public static final String EXTRA_MESSAGE_BODY  = "messageBody";
     public static final String EXTRA_MESSAGE_REFERENCE = "message_reference";
+    public static final String EXTRA_DECRYPTION_RESULT = "decryptionResult";
 
     private static final String STATE_KEY_ATTACHMENTS =
         "com.fsck.k9.activity.MessageCompose.attachments";
@@ -152,6 +154,7 @@ public class MessageCompose extends K9Activity implements OnClickListener,
 
     private static final int REQUEST_MASK_RECIPIENT_PRESENTER = (1<<8);
     private static final int REQUEST_MASK_MESSAGE_BUILDER = (2<<8);
+    private static final int REQUEST_MASK_QUOTED_MESSAGE_PRESENTER = (4<<8);
 
     /**
      * Regular expression to remove the first localized "Re:" prefix in subjects.
@@ -401,9 +404,11 @@ public class MessageCompose extends K9Activity implements OnClickListener,
         EolConvertingEditText lowerSignature = (EolConvertingEditText)findViewById(R.id.lower_signature);
 
         String sourceMessageBody = intent.getStringExtra(EXTRA_MESSAGE_BODY);
+        Parcelable decryptionResult = intent.getParcelableExtra(EXTRA_DECRYPTION_RESULT);
 
         QuotedMessageMvpView quotedMessageMvpView = new QuotedMessageMvpView(this);
-        quotedMessagePresenter = new QuotedMessagePresenter(this, quotedMessageMvpView, mAccount, sourceMessageBody);
+        quotedMessagePresenter = new QuotedMessagePresenter(
+                this, quotedMessageMvpView, mAccount, sourceMessageBody, decryptionResult);
 
         mMessageContentView = (EolConvertingEditText)findViewById(R.id.message_content);
         mMessageContentView.getInputExtras(true).putBoolean("allowEmoji", true);
@@ -1123,13 +1128,19 @@ public class MessageCompose extends K9Activity implements OnClickListener,
                         "this is an illegal state!");
                 return;
             }
-            currentMessageBuilder.onActivityResult(this, requestCode, resultCode, data);
+            currentMessageBuilder.onActivityResult(requestCode, resultCode, data, this);
             return;
         }
 
         if ((requestCode & REQUEST_MASK_RECIPIENT_PRESENTER) == REQUEST_MASK_RECIPIENT_PRESENTER) {
             requestCode ^= REQUEST_MASK_RECIPIENT_PRESENTER;
-            recipientPresenter.onActivityResult(resultCode, requestCode, data);
+            recipientPresenter.onActivityResult(requestCode, resultCode, data);
+            return;
+        }
+
+        if ((requestCode & REQUEST_MASK_QUOTED_MESSAGE_PRESENTER) == REQUEST_MASK_QUOTED_MESSAGE_PRESENTER) {
+            requestCode ^= REQUEST_MASK_QUOTED_MESSAGE_PRESENTER;
+            quotedMessagePresenter.onActivityResult(requestCode, resultCode, data);
             return;
         }
 
@@ -1595,9 +1606,6 @@ public class MessageCompose extends K9Activity implements OnClickListener,
             }
         }
 
-        // Quote the message and setup the UI.
-        quotedMessagePresenter.initFromReplyToMessage(message, mAction);
-
         if (mAction == Action.REPLY || mAction == Action.REPLY_ALL) {
             Identity useIdentity = IdentityHelper.getRecipientIdentityFromMessage(mAccount, message);
             Identity defaultIdentity = mAccount.getIdentity(0);
@@ -1628,9 +1636,6 @@ public class MessageCompose extends K9Activity implements OnClickListener,
                 Log.d(K9.LOG_TAG, "could not get Message-ID.");
             }
         }
-
-        // Quote the message and setup the UI.
-        quotedMessagePresenter.processMessageToForward(message);
 
         if (!mSourceMessageProcessed) {
             if (message.isSet(Flag.X_DOWNLOADED_PARTIAL) || !loadAttachments(message, 0)) {
@@ -1890,7 +1895,16 @@ public class MessageCompose extends K9Activity implements OnClickListener,
         }
     }
 
-    public void launchUserInteractionPendingIntent(PendingIntent pendingIntent, int requestCode) {
+    public void startIntentSenderForQuotedMessagePresenter(IntentSender intentSender, int requestCode) {
+        requestCode |= REQUEST_MASK_QUOTED_MESSAGE_PRESENTER;
+        try {
+            startIntentSenderForResult(intentSender, requestCode, null, 0, 0, 0);
+        } catch (SendIntentException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void startPendingIntentForRecipientPresenter(PendingIntent pendingIntent, int requestCode) {
         requestCode |= REQUEST_MASK_RECIPIENT_PRESENTER;
         try {
             startIntentSenderForResult(pendingIntent.getIntentSender(), requestCode, null, 0, 0, 0);
@@ -1899,21 +1913,12 @@ public class MessageCompose extends K9Activity implements OnClickListener,
         }
     }
 
-    public void loadLocalMessageForDisplay(LocalMessage message, Action action) {
+    private void loadLocalMessageMetadata(LocalMessage message) {
         // We check to see if we've previously processed the source message since this
         // could be called when switching from HTML to text replies. If that happens, we
         // only want to update the UI with quoted text (which picks the appropriate
         // part).
-        if (mSourceMessageProcessed) {
-            try {
-                quotedMessagePresenter.populateUIWithQuotedMessage(message, true, action);
-            } catch (MessagingException e) {
-                // Hm, if we couldn't populate the UI after source reprocessing, let's just delete it?
-                quotedMessagePresenter.showOrHideQuotedText(QuotedTextMode.HIDE);
-                Log.e(K9.LOG_TAG, "Could not re-process source message; deleting quoted text to be safe.", e);
-            }
-            updateMessageFormat();
-        } else {
+        if (!mSourceMessageProcessed) {
             processSourceMessage(message);
             mSourceMessageProcessed = true;
         }
@@ -1952,7 +1957,8 @@ public class MessageCompose extends K9Activity implements OnClickListener,
                     // could be called when switching from HTML to text replies. If that happens, we
                     // only want to update the UI with quoted text (which picks the appropriate
                     // part).
-                    loadLocalMessageForDisplay(message, mAction);
+                    loadLocalMessageMetadata(message);
+                    quotedMessagePresenter.loadLocalMessageQuotedContent(message, mAction);
                 }
             });
         }

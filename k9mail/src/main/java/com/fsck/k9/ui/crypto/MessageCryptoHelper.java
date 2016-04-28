@@ -16,11 +16,12 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentSender.SendIntentException;
 import android.os.AsyncTask;
+import android.os.Bundle;
+import android.os.Parcelable;
 import android.util.Log;
 
 import com.fsck.k9.Account;
 import com.fsck.k9.K9;
-import com.fsck.k9.R;
 import com.fsck.k9.crypto.MessageDecryptVerifier;
 import com.fsck.k9.mail.Body;
 import com.fsck.k9.mail.BodyPart;
@@ -62,21 +63,24 @@ public class MessageCryptoHelper {
 
     private MessageCryptoAnnotations messageAnnotations;
     private Intent userInteractionResultIntent;
+    private Parcelable decryptionResult;
 
 
-    public MessageCryptoHelper(Activity activity, Account account, MessageCryptoCallback callback) {
-        this.context = activity.getApplicationContext();
+    public MessageCryptoHelper(Context context, Account account, MessageCryptoCallback callback) {
+        this.context = context.getApplicationContext();
         this.callback = callback;
         this.account = account;
 
         this.messageAnnotations = new MessageCryptoAnnotations();
     }
 
-    public void decryptOrVerifyMessagePartsIfNecessary(LocalMessage message) {
+    public void decryptOrVerifyMessagePartsIfNecessary(LocalMessage message, Parcelable decryptionResult) {
         if (!account.isOpenPgpProviderConfigured()) {
             returnResultToFragment();
             return;
         }
+
+        this.decryptionResult = decryptionResult;
 
         List<Part> encryptedParts = MessageDecryptVerifier.findEncryptedParts(message);
         processFoundEncryptedParts(encryptedParts);
@@ -184,6 +188,11 @@ public class MessageCryptoHelper {
 
     private void decryptVerify(Intent intent) {
         intent.setAction(OpenPgpApi.ACTION_DECRYPT_VERIFY);
+        if (decryptionResult != null) {
+            Bundle bundle = new Bundle();
+            bundle.putParcelable(OpenPgpApi.EXTRA_DECRYPTION_RESULT, decryptionResult);
+            intent.putExtra(OpenPgpApi.EXTRA_DECRYPTION_RESULT_WRAPPER, bundle);
+        }
 
         try {
             CryptoPartType cryptoPartType = currentCryptoPart.type;
@@ -435,12 +444,18 @@ public class MessageCryptoHelper {
             userInteractionResultIntent = data;
             decryptOrVerifyNextPart();
         } else {
-            onCryptoFailed(new OpenPgpError(OpenPgpError.CLIENT_SIDE_ERROR, context.getString(R.string.openpgp_canceled_by_user)));
+            onCryptoCanceled();
         }
     }
 
     private void onCryptoSuccess(CryptoResultAnnotation resultAnnotation) {
         addCryptoResultAnnotationToMessage(resultAnnotation);
+        onCryptoFinished();
+    }
+
+    private void onCryptoCanceled() {
+        CryptoResultAnnotation errorPart = CryptoResultAnnotation.createOpenPgpCanceledAnnotation();
+        addCryptoResultAnnotationToMessage(errorPart);
         onCryptoFinished();
     }
 

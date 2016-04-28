@@ -476,7 +476,7 @@ public class RecipientPresenter implements PermissionPingCallback {
         recipientMvpView.showContactPicker(requestCode);
     }
 
-    public void onActivityResult(int resultCode, int requestCode, Intent data) {
+    public void onActivityResult(int requestCode, int resultCode, Intent data) {
         switch (requestCode) {
             case CONTACT_PICKER_TO:
             case CONTACT_PICKER_CC:
@@ -630,7 +630,7 @@ public class RecipientPresenter implements PermissionPingCallback {
 
         if (pendingUserInteractionIntent != null) {
             recipientMvpView
-                    .launchUserInteractionPendingIntent(pendingUserInteractionIntent, OPENPGP_USER_INTERACTION);
+                    .startPendingIntentForRecipientPresenter(pendingUserInteractionIntent, OPENPGP_USER_INTERACTION);
             pendingUserInteractionIntent = null;
             return;
         }

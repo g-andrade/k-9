@@ -3,8 +3,12 @@ package com.fsck.k9.ui.compose;
 
 import java.util.Map;
 
+import android.content.Intent;
+import android.content.IntentSender;
+import android.content.IntentSender.SendIntentException;
 import android.content.res.Resources;
 import android.os.Bundle;
+import android.os.Parcelable;
 import android.util.Log;
 
 import com.fsck.k9.Account;
@@ -20,12 +24,17 @@ import com.fsck.k9.mail.MessagingException;
 import com.fsck.k9.mail.Part;
 import com.fsck.k9.mail.internet.MessageExtractor;
 import com.fsck.k9.mail.internet.MimeUtility;
+import com.fsck.k9.mailstore.CryptoResultAnnotation;
+import com.fsck.k9.mailstore.CryptoResultAnnotation.CryptoError;
 import com.fsck.k9.mailstore.LocalMessage;
 import com.fsck.k9.message.IdentityField;
 import com.fsck.k9.message.InsertableHtmlContent;
 import com.fsck.k9.message.MessageBuilder;
 import com.fsck.k9.message.QuotedTextMode;
 import com.fsck.k9.message.SimpleMessageFormat;
+import com.fsck.k9.ui.crypto.MessageCryptoAnnotations;
+import com.fsck.k9.ui.crypto.MessageCryptoCallback;
+import com.fsck.k9.ui.crypto.MessageCryptoHelper;
 
 
 public class QuotedMessagePresenter {
@@ -40,6 +49,10 @@ public class QuotedMessagePresenter {
     private final QuotedMessageMvpView view;
     private final MessageCompose messageCompose;
     private final Resources resources;
+
+    private final Parcelable decryptionResult;
+    private MessageCryptoHelper sourceMessageCryptoHelper;
+    private MessageCryptoAnnotations cachedCryptoAnnotations;
 
     private QuotedTextMode quotedTextMode;
     private QuoteStyle quoteStyle;
@@ -67,11 +80,12 @@ public class QuotedMessagePresenter {
 
 
     public QuotedMessagePresenter(MessageCompose messageCompose, QuotedMessageMvpView quotedMessageMvpView,
-            Account account, String sourceMessageBody) {
+            Account account, String sourceMessageBody, Parcelable decryptionResult) {
         this.messageCompose = messageCompose;
         this.resources = messageCompose.getResources();
         this.view = quotedMessageMvpView;
-        this.sourceMessageBody = sourceMessageBody;
+//        this.sourceMessageBody = sourceMessageBody;
+        this.decryptionResult = decryptionResult;
         onSwitchAccount(account);
 
         quotedTextMode = QuotedTextMode.NONE;
@@ -95,9 +109,21 @@ public class QuotedMessagePresenter {
      * @param showQuotedText
      *         {@code true} if the quoted text should be shown, {@code false} otherwise.
      */
-    public void populateUIWithQuotedMessage(Message sourceMessage, boolean showQuotedText, Action action)
-            throws MessagingException {
+    public void populateUIWithQuotedMessage(Message sourceMessage, boolean showQuotedText, Action action,
+            MessageCryptoAnnotations annotations) throws MessagingException {
         MessageFormat origMessageFormat = account.getMessageFormat();
+
+        Part messageRootPart = sourceMessage;
+        if (annotations.has(messageRootPart)) {
+            CryptoResultAnnotation annotation = annotations.get(messageRootPart);
+            if (annotation.getErrorType() == CryptoError.OPENPGP_UI_CANCELED) {
+                // TODO cancelled!
+                return;
+            }
+            if (annotation.getErrorType() == CryptoError.NONE && annotation.hasReplacementData()) {
+                messageRootPart = annotation.getReplacementData();
+            }
+        }
 
         if (forcePlainText || origMessageFormat == MessageFormat.TEXT) {
             // Use plain text for the quoted message
@@ -106,7 +132,7 @@ public class QuotedMessagePresenter {
             // Figure out which message format to use for the quoted text by looking if the source
             // message contains a text/html part. If it does, we use that.
             quotedTextFormat =
-                    (MimeUtility.findFirstPartByMimeType(sourceMessage, "text/html") == null) ?
+                    (MimeUtility.findFirstPartByMimeType(messageRootPart, "text/html") == null) ?
                             SimpleMessageFormat.TEXT : SimpleMessageFormat.HTML;
         } else {
             quotedTextFormat = SimpleMessageFormat.HTML;
@@ -117,7 +143,7 @@ public class QuotedMessagePresenter {
         // Handle the original message in the reply
         // If we already have sourceMessageBody, use that.  It's pre-populated if we've got crypto going on.
         String content = sourceMessageBody != null ? sourceMessageBody :
-                QuotedMessageHelper.getBodyTextFromMessage(sourceMessage, quotedTextFormat);
+                QuotedMessageHelper.getBodyTextFromMessage(messageRootPart, quotedTextFormat);
 
         if (quotedTextFormat == SimpleMessageFormat.HTML) {
             // Strip signature.
@@ -183,14 +209,15 @@ public class QuotedMessagePresenter {
                 (QuotedTextMode) savedInstanceState.getSerializable(STATE_KEY_QUOTED_TEXT_MODE));
     }
 
-    public void processMessageToForward(Message message) throws MessagingException {
+    public void loadFromForwardMessage(Message message, MessageCryptoAnnotations annotations)
+            throws MessagingException {
         quoteStyle = QuoteStyle.HEADER;
-        populateUIWithQuotedMessage(message, true, Action.FORWARD);
+        populateUIWithQuotedMessage(message, true, Action.FORWARD, annotations);
     }
 
-    public void initFromReplyToMessage(Message message, Action action)
+    public void loadFromReplyToMessage(Message message, Action action, MessageCryptoAnnotations annotations)
             throws MessagingException {
-        populateUIWithQuotedMessage(message, account.isDefaultQuotedTextShown(), action);
+        populateUIWithQuotedMessage(message, account.isDefaultQuotedTextShown(), action, annotations);
     }
 
     public void processDraftMessage(LocalMessage message, Map<IdentityField, String> k9identity)
@@ -397,6 +424,58 @@ public class QuotedMessagePresenter {
 
     public boolean isQuotedTextText() {
         return quotedTextFormat == SimpleMessageFormat.TEXT;
+    }
+
+    public void onActivityResult(int requestCode, int resultCode, Intent data) {
+        sourceMessageCryptoHelper.onActivityResult(requestCode, resultCode, data);
+    }
+
+    private void loadLocalMessageQuotedContent(LocalMessage message, Action action, MessageCryptoAnnotations annotations) {
+        try {
+            switch (action) {
+                case REPLY:
+                case REPLY_ALL:
+                    loadFromReplyToMessage(message, action, annotations);
+                    break;
+                case FORWARD:
+                    loadFromForwardMessage(message, annotations);
+                    break;
+            }
+        } catch (MessagingException e) {
+            cachedCryptoAnnotations = null;
+            // Hm, if we couldn't populate the UI after source reprocessing, let's just delete it?
+            showOrHideQuotedText(QuotedTextMode.HIDE);
+            Log.e(K9.LOG_TAG, "Could not re-process source message; deleting quoted text to be safe.", e);
+        }
+    }
+
+    public void loadLocalMessageQuotedContent(final LocalMessage message, final Action action) {
+        if (sourceMessageCryptoHelper != null) {
+            Log.e(K9.LOG_TAG, "trying to prepare message while already loading one? better avoid inconsistent state");
+            return;
+        }
+
+        if (cachedCryptoAnnotations != null) {
+            sourceMessageCryptoHelper = null;
+            loadLocalMessageQuotedContent(message, action, cachedCryptoAnnotations);
+            return;
+        }
+
+        sourceMessageCryptoHelper = new MessageCryptoHelper(messageCompose, account, new MessageCryptoCallback() {
+            @Override
+            public void onCryptoOperationsFinished(MessageCryptoAnnotations annotations) {
+                cachedCryptoAnnotations = annotations;
+                sourceMessageCryptoHelper = null;
+                loadLocalMessageQuotedContent(message, action, cachedCryptoAnnotations);
+            }
+
+            @Override
+            public void startPendingIntentForCryptoHelper(IntentSender si, int requestCode, Intent fillIntent,
+                    int flagsMask, int flagValues, int extraFlags) throws SendIntentException {
+                messageCompose.startIntentSenderForQuotedMessagePresenter(si, requestCode);
+            }
+        });
+        sourceMessageCryptoHelper.decryptOrVerifyMessagePartsIfNecessary(message, decryptionResult);
     }
 
 }

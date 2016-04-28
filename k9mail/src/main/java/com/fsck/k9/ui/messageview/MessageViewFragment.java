@@ -19,6 +19,7 @@ import android.content.Loader;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.Parcelable;
 import android.text.TextUtils;
 import android.util.Log;
 import android.view.ContextThemeWrapper;
@@ -55,6 +56,7 @@ import com.fsck.k9.ui.message.LocalMessageLoader;
 import com.fsck.k9.ui.messageview.MessageCryptoPresenter.MessageCryptoMvpView;
 import com.fsck.k9.view.MessageCryptoDisplayStatus;
 import com.fsck.k9.view.MessageHeader;
+import org.openintents.openpgp.OpenPgpDecryptionResult;
 
 
 public class MessageViewFragment extends Fragment implements ConfirmationDialogFragmentListener,
@@ -195,7 +197,7 @@ public class MessageViewFragment extends Fragment implements ConfirmationDialogF
         Activity activity = getActivity();
         Context appContext = activity.getApplicationContext();
         mAccount = Preferences.getPreferences(appContext).getAccount(mMessageReference.getAccountUuid());
-        messageCryptoHelper = new MessageCryptoHelper(activity, mAccount, this);
+        messageCryptoHelper = new MessageCryptoHelper(getApplicationContext(), mAccount, this);
 
         startLoadingMessageFromDatabase();
 
@@ -226,7 +228,7 @@ public class MessageViewFragment extends Fragment implements ConfirmationDialogF
         if (message.isBodyMissing()) {
             startDownloadingMessageBody(message);
         } else {
-            messageCryptoHelper.decryptOrVerifyMessagePartsIfNecessary(message);
+            messageCryptoHelper.decryptOrVerifyMessagePartsIfNecessary(message, null);
         }
     }
 
@@ -360,19 +362,27 @@ public class MessageViewFragment extends Fragment implements ConfirmationDialogF
 
     public void onReply() {
         if (mMessage != null) {
-            mFragmentListener.onReply(mMessage, messageViewInfo.text);
+            Parcelable decryptionResult = messageViewInfo.cryptoResultAnnotation != null ?
+                    messageViewInfo.cryptoResultAnnotation.getOpenPgpDecryptionResult() : null;
+            mFragmentListener.onReply(mMessage, messageViewInfo.text,
+                    decryptionResult);
         }
     }
 
     public void onReplyAll() {
         if (mMessage != null) {
-            mFragmentListener.onReplyAll(mMessage, messageViewInfo.text);
+            Parcelable decryptionResult = messageViewInfo.cryptoResultAnnotation != null ?
+                    messageViewInfo.cryptoResultAnnotation.getOpenPgpDecryptionResult() : null;
+            mFragmentListener.onReplyAll(mMessage, messageViewInfo.text,
+                    decryptionResult);
         }
     }
 
     public void onForward() {
         if (mMessage != null) {
-            mFragmentListener.onForward(mMessage, messageViewInfo.text);
+            Parcelable decryptionResult = messageViewInfo.cryptoResultAnnotation != null ?
+                    messageViewInfo.cryptoResultAnnotation.getOpenPgpDecryptionResult() : null;
+            mFragmentListener.onForward(mMessage, messageViewInfo.text, decryptionResult);
         }
     }
 
@@ -717,7 +727,7 @@ public class MessageViewFragment extends Fragment implements ConfirmationDialogF
 
     @Override
     public void restartMessageCryptoProcessing() {
-        messageCryptoHelper.decryptOrVerifyMessagePartsIfNecessary(mMessage);
+        messageCryptoHelper.decryptOrVerifyMessagePartsIfNecessary(mMessage, null);
     }
 
     @Override
@@ -734,10 +744,10 @@ public class MessageViewFragment extends Fragment implements ConfirmationDialogF
     }
 
     public interface MessageViewFragmentListener {
-        void onForward(LocalMessage mMessage, String text);
+        void onForward(LocalMessage mMessage, String text, Parcelable openPgpDecryptionResult);
         void disableDeleteAction();
-        void onReplyAll(LocalMessage mMessage, String text);
-        void onReply(LocalMessage mMessage, String text);
+        void onReplyAll(LocalMessage mMessage, String text, Parcelable openPgpDecryptionResult);
+        void onReply(LocalMessage mMessage, String text, Parcelable openPgpDecryptionResult);
         void displayMessageSubject(String title);
         void setProgress(boolean b);
         void showNextMessageOrReturn();

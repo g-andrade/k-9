@@ -23,7 +23,6 @@ import com.fsck.k9.mail.Address;
 import com.fsck.k9.mail.Flag;
 import com.fsck.k9.mail.Message;
 import com.fsck.k9.mail.MessagingException;
-import com.fsck.k9.mailstore.CryptoResultAnnotation.CryptoError;
 import com.fsck.k9.mailstore.MessageViewInfo;
 import com.fsck.k9.view.MessageCryptoDisplayStatus;
 import com.fsck.k9.view.MessageHeader;
@@ -95,13 +94,20 @@ public class MessageTopView extends LinearLayout implements ShowPicturesControll
         mHeaderContainer.setCryptoStatus(displayStatus);
 
         View view;
-        // TODO handle other CryptoError states
-        boolean isCryptoError = messageViewInfo.cryptoResultAnnotation != null &&
-                messageViewInfo.cryptoResultAnnotation.getErrorType() == CryptoError.OPENPGP_API_RETURNED_ERROR;
-        if (isCryptoError) {
-            view = createMessageCryptoErrorView(messageViewInfo);
-        } else {
+        if (messageViewInfo.cryptoResultAnnotation == null) {
             view = createMessageContentView(account, messageViewInfo);
+        } else {
+            switch (messageViewInfo.cryptoResultAnnotation.getErrorType()) {
+                case NONE:
+                    view = createMessageContentView(account, messageViewInfo);
+                    break;
+                case OPENPGP_UI_CANCELED:
+                    view = createMessageCryptoErrorView(messageViewInfo, true);
+                    break;
+                // TODO handle other CryptoError states
+                default:
+                    view = createMessageCryptoErrorView(messageViewInfo, false);
+            }
         }
 
         containerView.addView(view);
@@ -120,14 +126,19 @@ public class MessageTopView extends LinearLayout implements ShowPicturesControll
         return view;
     }
 
-    private View createMessageCryptoErrorView(MessageViewInfo messageViewInfo) {
+    private View createMessageCryptoErrorView(MessageViewInfo messageViewInfo, boolean canceled) {
         View view = mInflater.inflate(R.layout.message_content_crypto_error, containerView, false);
         TextView cryptoErrorText = (TextView) view.findViewById(R.id.crypto_error_text);
 
-        OpenPgpError openPgpError = messageViewInfo.cryptoResultAnnotation.getOpenPgpError();
-        if (openPgpError != null) {
-            String errorText = openPgpError.getMessage();
-            cryptoErrorText.setText(errorText);
+        if (canceled) {
+            // TODO add "retry" button
+            cryptoErrorText.setText(R.string.openpgp_canceled_by_user);
+        } else {
+            OpenPgpError openPgpError = messageViewInfo.cryptoResultAnnotation.getOpenPgpError();
+            if (openPgpError != null) {
+                String errorText = openPgpError.getMessage();
+                cryptoErrorText.setText(errorText);
+            }
         }
 
         return view;

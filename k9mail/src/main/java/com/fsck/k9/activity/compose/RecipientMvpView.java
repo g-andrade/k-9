@@ -354,8 +354,8 @@ public class RecipientMvpView implements OnFocusChangeListener, OnClickListener 
         dialog.show(activity.getFragmentManager(), "crypto_settings");
     }
 
-    public void launchUserInteractionPendingIntent(PendingIntent pendingIntent, int requestCode) {
-        activity.launchUserInteractionPendingIntent(pendingIntent, requestCode);
+    public void startPendingIntentForRecipientPresenter(PendingIntent pendingIntent, int requestCode) {
+        activity.startPendingIntentForRecipientPresenter(pendingIntent, requestCode);
     }
 
     public enum CryptoStatusDisplayType {

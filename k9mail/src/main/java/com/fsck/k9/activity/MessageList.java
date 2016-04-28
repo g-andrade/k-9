@@ -18,6 +18,7 @@ import android.content.res.Configuration;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Parcelable;
 import android.util.Log;
 import android.view.KeyEvent;
 import android.view.LayoutInflater;
@@ -1209,17 +1210,32 @@ public class MessageList extends K9Activity implements MessageListFragmentListen
 
     @Override
     public void onForward(LocalMessage message) {
-        MessageActions.actionForward(this, message, null);
+        MessageActions.actionForward(this, message, null, null);
+    }
+
+    @Override
+    public void onForward(LocalMessage message, String text, Parcelable decryptionResult) {
+        MessageActions.actionForward(this, message, text, decryptionResult);
     }
 
     @Override
     public void onReply(LocalMessage message) {
-        MessageActions.actionReply(this, message, false, null);
+        MessageActions.actionReply(this, message, false, null, null);
+    }
+
+    @Override
+    public void onReply(LocalMessage message, String text, Parcelable decryptionResult) {
+        MessageActions.actionReply(this, message, false, text, decryptionResult);
+    }
+
+    @Override
+    public void onReplyAll(LocalMessage message, String text, Parcelable decryptionResult) {
+        MessageActions.actionReply(this, message, true, text, decryptionResult);
     }
 
     @Override
     public void onReplyAll(LocalMessage message) {
-        MessageActions.actionReply(this, message, true, null);
+        MessageActions.actionReply(this, message, true, null, null);
     }
 
     @Override
