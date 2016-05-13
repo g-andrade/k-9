@@ -8,26 +8,19 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 
+import com.fsck.k9.mail.Body;
 import com.fsck.k9.mail.MessagingException;
-import com.fsck.k9.mail.internet.RawDataBody;
 import com.fsck.k9.mail.internet.SizeAware;
 import org.apache.commons.io.IOUtils;
 
 
-public class DecryptedTempFileBody implements RawDataBody, SizeAware {
+public class DecryptedTempFileBody implements Body, SizeAware {
     private final File tempDirectory;
-    private final String encoding;
     private File file;
 
 
-    public DecryptedTempFileBody(String encoding, File tempDirectory) {
-        this.encoding = encoding;
+    public DecryptedTempFileBody(File tempDirectory) {
         this.tempDirectory = tempDirectory;
-    }
-
-    @Override
-    public String getEncoding() {
-        return encoding;
     }
 
     @Override

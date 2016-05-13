@@ -67,7 +67,7 @@ public class DecryptStreamParser {
 
     private static Body createBody(InputStream inputStream, String transferEncoding, File decryptedTempDirectory)
             throws IOException {
-        DecryptedTempFileBody body = new DecryptedTempFileBody(transferEncoding, decryptedTempDirectory);
+        DecryptedTempFileBody body = new DecryptedTempFileBody(decryptedTempDirectory);
         OutputStream outputStream = body.getOutputStream();
         try {
             InputStream decodingInputStream;
